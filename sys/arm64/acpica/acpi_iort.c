@@ -91,9 +91,10 @@ struct iort_node {
 	u_int			usecount;	/* for bookkeeping */
 	u_int			revision;	/* node revision */
 	union {
-		ACPI_IORT_ROOT_COMPLEX	pci_rc;		/* PCI root complex */
-		ACPI_IORT_SMMU		smmu;
-		ACPI_IORT_SMMU_V3	smmu_v3;
+		ACPI_IORT_ROOT_COMPLEX		pci_rc;	/* PCI root complex */
+		ACPI_IORT_SMMU			smmu;
+		ACPI_IORT_SMMU_V3		smmu_v3;
+		ACPI_IORT_NAMED_COMPONENT	named_comp;
 	} data;
 	union {
 		struct iort_map_entry	*mappings;	/* node mappings  */
@@ -105,6 +106,7 @@ struct iort_node {
 static TAILQ_HEAD(, iort_node) pci_nodes = TAILQ_HEAD_INITIALIZER(pci_nodes);
 static TAILQ_HEAD(, iort_node) smmu_nodes = TAILQ_HEAD_INITIALIZER(smmu_nodes);
 static TAILQ_HEAD(, iort_node) its_groups = TAILQ_HEAD_INITIALIZER(its_groups);
+static TAILQ_HEAD(, iort_node) named_nodes = TAILQ_HEAD_INITIALIZER(named_nodes);
 
 static int
 iort_entry_get_id_mapping_index(struct iort_node *node)
@@ -279,6 +281,7 @@ iort_add_nodes(ACPI_IORT_NODE *node_entry, u_int node_offset)
 	ACPI_IORT_ROOT_COMPLEX *pci_rc;
 	ACPI_IORT_SMMU *smmu;
 	ACPI_IORT_SMMU_V3 *smmu_v3;
+	ACPI_IORT_NAMED_COMPONENT *named_comp;
 	struct iort_node *node;
 
 	node = malloc(sizeof(*node), M_DEVBUF, M_WAITOK | M_ZERO);
@@ -309,6 +312,16 @@ iort_add_nodes(ACPI_IORT_NODE *node_entry, u_int node_offset)
 	case ACPI_IORT_NODE_ITS_GROUP:
 		iort_copy_its(node, node_entry);
 		TAILQ_INSERT_TAIL(&its_groups, node, next);
+		break;
+	case ACPI_IORT_NODE_NAMED_COMPONENT:
+		named_comp = (ACPI_IORT_NAMED_COMPONENT *)node_entry->NodeData;
+		memcpy(&node->data.named_comp, named_comp, sizeof(*named_comp));
+		iort_copy_data(node, node_entry);
+		TAILQ_INSERT_TAIL(&named_nodes, node, next);
+
+		/* For debug purposes only! */
+		printf("ACPI: IORT: Named node added: %s\n",
+		    &named_comp->DeviceName[0]);
 		break;
 	default:
 		printf("ACPI: IORT: Dropping unhandled type %u\n",
@@ -368,7 +381,9 @@ iort_post_process_mappings(void)
 	TAILQ_FOREACH(node, &smmu_nodes, next)
 		for (i = 0; i < node->nentries; i++)
 			iort_resolve_node(&node->entries.mappings[i], FALSE);
-	/* TODO: named nodes */
+	TAILQ_FOREACH(node, &named_nodes, next)
+		for (i = 0; i < node->nentries; i++)
+			iort_resolve_node(&node->entries.mappings[i], TRUE);
 }
 
 /*
