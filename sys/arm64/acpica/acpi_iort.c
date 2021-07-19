@@ -77,6 +77,14 @@ struct iort_its_entry {
 	int			pxm;
 };
 
+struct iort_named_component
+{
+	UINT32                  NodeFlags;
+	UINT64                  MemoryProperties; /* Memory access properties */
+	UINT8                   MemoryAddressLimit; /* Memory address size limit */
+	char                    DeviceName[32]; /* Path of namespace object */
+};
+
 /*
  * IORT node. Each node has some device specific data depending on the
  * type of the node. The node can also have a set of mappings, OR in
@@ -94,7 +102,7 @@ struct iort_node {
 		ACPI_IORT_ROOT_COMPLEX		pci_rc;	/* PCI root complex */
 		ACPI_IORT_SMMU			smmu;
 		ACPI_IORT_SMMU_V3		smmu_v3;
-		ACPI_IORT_NAMED_COMPONENT	named_comp;
+		struct iort_named_component	named_comp;
 	} data;
 	union {
 		struct iort_map_entry	*mappings;	/* node mappings  */
@@ -384,6 +392,10 @@ iort_add_nodes(ACPI_IORT_NODE *node_entry, u_int node_offset)
 	case ACPI_IORT_NODE_NAMED_COMPONENT:
 		named_comp = (ACPI_IORT_NAMED_COMPONENT *)node_entry->NodeData;
 		memcpy(&node->data.named_comp, named_comp, sizeof(*named_comp));
+		strncpy(node->data.named_comp.DeviceName,
+		    named_comp->DeviceName,
+		    sizeof(node->data.named_comp.DeviceName));
+		node->data.named_comp.DeviceName[31] = 0;
 		iort_copy_data(node, node_entry);
 		TAILQ_INSERT_TAIL(&named_nodes, node, next);
 
